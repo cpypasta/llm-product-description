@@ -3,3 +3,5 @@ lib
 include
 pyvenv.cfg
 .env
+share
+__pycache__
