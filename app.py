@@ -150,18 +150,17 @@ _Note: will use Browserless.io if token provided._
     if not openai_key_input and not os.getenv("OPENAI_API_KEY"):
       st.error("Please provide an OpenAI API key.")
     else:
+      os.environ["OPENAI_API_KEY"] = openai_key_input
       description_status = st.status("Generating description...", expanded=True)
       llm = ChatOpenAI(
         model=chat_model, 
         temperature=chat_temp, 
         streaming=True, 
-        callbacks=[stream_handler],
-        api_key=openai_key_input
+        callbacks=[stream_handler]
       )
       llm_fast = OpenAI(
         model="text-davinci-003", 
-        temperature=0,
-        api_key=openai_key_input
+        temperature=0
       )
       search_docs, sources = run(
         llm, 
