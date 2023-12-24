@@ -140,8 +140,7 @@ _Note: will use Browserless.io if token provided._
       smart_top_links = st.toggle("Smart Links", value=False, help="Ask the LLM to find the top links.")
   
   # GENERATE DESCRIPTION
-  if product_id and generate_btn:
-    description_status = st.status("Generating description...", expanded=True)
+  if product_id and generate_btn:    
     chat_box = st.empty()
     stream_handler = StreamHandler(chat_box)
     if serper_key_input:
@@ -151,6 +150,7 @@ _Note: will use Browserless.io if token provided._
     if not openai_key_input and not os.getenv("OPENAI_API_KEY"):
       st.error("Please provide an OpenAI API key.")
     else:
+      description_status = st.status("Generating description...", expanded=True)
       llm = ChatOpenAI(
         model=chat_model, 
         temperature=chat_temp, 
