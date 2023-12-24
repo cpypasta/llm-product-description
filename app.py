@@ -141,8 +141,6 @@ _Note: will use Browserless.io if token provided._
   
   # GENERATE DESCRIPTION
   if product_id and generate_btn:    
-    chat_box = st.empty()
-    stream_handler = StreamHandler(chat_box)
     if serper_key_input:
       os.environ["SERPER_API_KEY"] = serper_key_input
     if browserless_token_input:
@@ -152,6 +150,8 @@ _Note: will use Browserless.io if token provided._
     else:
       os.environ["OPENAI_API_KEY"] = openai_key_input
       description_status = st.status("Generating description...", expanded=True)
+      chat_box = st.empty()
+      stream_handler = StreamHandler(chat_box)      
       llm = ChatOpenAI(
         model=chat_model, 
         temperature=chat_temp, 

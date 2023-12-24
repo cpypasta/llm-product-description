@@ -17,7 +17,7 @@ from langchain.document_transformers  import BeautifulSoupTransformer
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-os.system("playwright install-deps")
+os.system("sudo playwright install-deps")
 os.system("playwright install chromium")
 sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
