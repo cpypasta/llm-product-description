@@ -144,8 +144,10 @@ _Note: will use Browserless.io if token provided._
     description_status = st.status("Generating description...", expanded=True)
     chat_box = st.empty()
     stream_handler = StreamHandler(chat_box)
-    os.environ["SERPER_API_KEY"] = serper_key_input
-    os.environ["BROWSERLESS_TOKEN"] = browserless_token_input
+    if serper_key_input:
+      os.environ["SERPER_API_KEY"] = serper_key_input
+    if browserless_token_input:
+      os.environ["BROWSERLESS_TOKEN"] = browserless_token_input
     llm = ChatOpenAI(
       model=chat_model, 
       temperature=chat_temp, 
