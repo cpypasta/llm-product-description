@@ -6,3 +6,4 @@ langchain==0.0.352
 bs4==0.0.1
 tiktoken==0.5.2
 python-dotenv==1.0.0
+pysqlite-binary==0.5.1.3380300

@@ -7,7 +7,7 @@ Sources of data:
 1. Internet
 2. Product Manuals (PDFs)
 """
-import streamlit as st, re, os
+import streamlit as st, re, os, sys
 from time import time
 from dotenv import load_dotenv
 from streamlit.elements.lib.mutable_status_container import StatusContainer

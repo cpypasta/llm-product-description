@@ -1,4 +1,4 @@
-import json, base64, openai, asyncio, os
+import json, base64, openai, asyncio, os, pysqlite3, sys
 from enum import Enum
 from timeit import default_timer
 from typing import Callable, Any
@@ -18,6 +18,7 @@ from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 os.system("playwright install chromium")
+sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
 
 def timer(func: Callable) -> Any:
   def inner(*args, **kwargs):
