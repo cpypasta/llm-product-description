@@ -1,9 +1,9 @@
-import json, base64, openai
+import json, base64, openai, asyncio, os
 from enum import Enum
 from timeit import default_timer
 from typing import Callable, Any
 from json_parser import JsonOutputParser
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright, Browser
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
@@ -17,9 +17,11 @@ from langchain.document_transformers  import BeautifulSoupTransformer
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
+os.system("playwright install chromium")
+
 def timer(func: Callable) -> Any:
   def inner(*args, **kwargs):
-    start = default_timer() 
+    start = default_timer()  
     result = func(*args, **kwargs)
     end = default_timer()
     print(f"{func.__name__}:", end - start)
@@ -120,14 +122,40 @@ class WebResearchRetriever(BaseRetriever):
   def _fast_web_scrape(self, best_links: list[str]) -> list[Document]:
     """Fast web scraping using just the URL."""
     web_loader = WebBaseLoader(best_links)
-    search_docs = web_loader.load()
+    search_docs = web_loader.aload()
     return search_docs
+
+  async def _browserless_scrape_url(self, browser: Browser, url: str) -> Document:
+    """Web scraping URL with Browswerless.io"""
+    print(url)
+    context = await browser.new_context()
+    page = await context.new_page()
+    await page.goto(url, wait_until="load")
+    page_content = await page.content()
+    await context.close()
+    return Document(page_content=page_content, metadata={"source": url})
+
+  async def _browserless_scrape_urls(self, best_links: list[str], token: str) -> list[Document]:
+    """Web scraping URLs with Browswerless.io"""
+    cdp_url = f"wss://chrome.browserless.io?token={token}&blockAds"
+    async with async_playwright() as p:
+      browser = await p.chromium.connect_over_cdp(cdp_url)
+      calls = [self._browserless_scrape_url(browser, url) for url in best_links]
+      search_docs = await asyncio.gather(*calls)
+      await browser.close()
+      return search_docs
 
   @timer
   def _browser_scrape(self, best_links: list[str]) -> list[Document]:
     """Web scraping using a headless browser."""
-    web_loader = AsyncChromiumLoader(best_links)
-    search_docs = web_loader.load()
+    token = os.getenv('BROWSERLESS_TOKEN')
+    if token:
+      print("using browserless.io")
+      search_docs = asyncio.run(self._browserless_scrape_urls(best_links[:4], token)) # max of 4 urls
+    else:
+      web_loader = AsyncChromiumLoader(best_links)
+      search_docs = web_loader.load()
+      
     bs_transformer = BeautifulSoupTransformer()
     docs_transformed = bs_transformer.transform_documents(
       search_docs, 
@@ -135,18 +163,26 @@ class WebResearchRetriever(BaseRetriever):
     )
     return docs_transformed
 
-  def _take_screenshots(self, urls: str) -> list[str]:
-    filenames = []
-    with sync_playwright() as p:
-      browser = p.chromium.launch()
-      for i, url in enumerate(urls):
-        page = browser.new_page()
-        page.goto(url)
-        filename = f"screenshots/image{i}.png"
-        page.screenshot(path=filename, full_page=True)
-        filenames.append(filename)
-      browser.close()
-    return filenames
+  async def _take_screenshot(self, browser: Browser, url: str, i: int) -> str:
+    page = await browser.new_page()
+    await page.goto(url, wait_until="load")
+    filename = f"screenshots/image{i}.png"
+    await page.screenshot(path=filename, full_page=True)
+    return filename
+
+  async def _take_screenshots(self, urls: str) -> list[str]:
+    token = os.getenv('BROWSERLESS_TOKEN')
+    async with async_playwright() as p:
+      if token:
+        print("using browserless.io")
+        browser = await p.chromium.connect_over_cdp(f"wss://chrome.browserless.io?token={token}&blockAds")
+        urls = urls[:4] # max of 4 urls
+      else:
+        browser = await p.chromium.launch()
+      calls = [self._take_screenshot(browser, url, i) for i, url in enumerate(urls)]
+      filenames = await asyncio.gather(*calls)
+      await browser.close()
+      return filenames
       
   def _extract_description_from_images(self, filenames: list[str]) -> str:
     image_messages = []
@@ -187,7 +223,7 @@ class WebResearchRetriever(BaseRetriever):
     
   @timer
   def _screenshot_scrape(self, best_links: list[str]) -> list[Document]:
-    filenames = self._take_screenshots(best_links)
+    filenames = asyncio.run(self._take_screenshots(best_links))
     description = self._extract_description_from_images(filenames)
     return [Document(page_content=description, metadata={"source": ";".join(best_links)})]
 
@@ -196,7 +232,7 @@ class WebResearchRetriever(BaseRetriever):
     """Find the most relevant text within the search docs."""
     split_docs = RecursiveCharacterTextSplitter().split_documents(search_docs)  
     self.vector_store.add_documents(split_docs)
-    related_docs = self.vector_store.similarity_search(f"what is the product description for {query}", k=self.vector_n)
+    related_docs = self.vector_store.similarity_search(query, k=self.vector_n)
     return related_docs
   
   def _web_scrape(self, best_links: list[str], search_results: list[Document]):
@@ -213,12 +249,17 @@ class WebResearchRetriever(BaseRetriever):
   
   def get_relevant_documents(
     self, 
-    query: str,     
+    query: str,
+    url: str = None,     
     *, 
     run_manager: CallbackManagerForRetrieverRun
   ) -> list[Document]:
     """Search Google for documents related to the query input."""
-    search_results = self._web_search(query)
+    if url:
+      search_results = [{"link": url}]
+      self.web_scrape_method = WebScrapeMethod.http
+    else:
+      search_results = self._web_search(query)
     best_links = self._find_best_links(query, search_results)
     search_docs = self._web_scrape(best_links, search_results)
     search_docs = self._find_relevant_search_docs(search_docs, query)    

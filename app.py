@@ -7,7 +7,7 @@ Sources of data:
 1. Internet
 2. Product Manuals (PDFs)
 """
-import streamlit as st, re
+import streamlit as st, re, os
 from time import time
 from dotenv import load_dotenv
 from streamlit.elements.lib.mutable_status_container import StatusContainer
@@ -61,13 +61,14 @@ def run(
   web_scrape_method: WebScrapeMethod,
   smart_top_links: bool,
   links_n: int,
-  vector_n: int
-) -> str:
+  vector_n: int,
+  url: str = None
+) -> (list[Document], str):
   start_time = time()
   query = f"what is the product {product}"
   chroma = Chroma(embedding_function=OpenAIEmbeddings(), collection_name="search_results")
   with description_status as status:
-    st.write("Searching internet")
+    st.write("searching for information...")
     retriever = WebResearchRetriever.from_llm(
       llm_fast, 
       chroma, 
@@ -76,8 +77,8 @@ def run(
       links_n,
       vector_n
     )
-    search_docs = retriever.get_relevant_documents(query)
-    st.write("Processing description") 
+    search_docs = retriever.get_relevant_documents(query, url=url)
+    st.write("generating description...") 
     sources = create_product_description(llm, product, search_docs) 
     end_time = time()
     end_time = time()
@@ -85,53 +86,75 @@ def run(
     duration = f"{duration:.2f} secs"
     status.update(label=f"Description Created ({duration})", state="complete", expanded=False)
   chroma.delete_collection()
-  return sources
+  return search_docs, sources
 
 
 if __name__ == "__main__":    
+  openai_key = os.getenv("OPENAI_API_KEY")
+  serper_key = os.getenv("SERPER_API_KEY")
+  browserless_token = os.getenv("BROWSERLESS_TOKEN")
+  
   st.title("Product Description Generator")
-  st.info("Enter a product ID to generate a product description.")
-  product_id = st.text_input("Product ID", value="BUC10986", key="product_id")
+  st.info("Enter a product name or ID to generate a product description.")
+  product_id = st.text_input("Product", value="Lemon Hint Water", key="product_id")
+  product_url = st.text_input("Reference Link _(optional)_", value="", help="Will use the link to find product information.")
   generate_btn = st.button("Generate")
   
   # OPTIONS
   with st.sidebar:
-    chat_model = st.selectbox(
-      "Chat Model",
-      options=[
-        "gpt-4-1106-preview", 
-        "gpt-4", 
-        "gpt-3.5-turbo-16k-0613", 
-        "gpt-3.5-turbo-16k", 
-        "gpt-3.5-turbo-1106",
-        "gpt-3.5-turbo"
-      ],
-      index=1
-    )
-    chat_temp = st.slider("Chat temperature (creativity)", 0.0, 2.0, 0.7, 0.1)
-    web_scrape_method = st.selectbox(
-      "Web Scrape Method", 
-      options=["simple", "http", "browser", "screenshot"], 
-      index=1
-    )
-    smart_top_links = st.toggle("Smart top links", value=True)
-    links_n = st.slider("Number of links to search", 1, 10, 3)
-    vector_n = st.slider("Number of vector results", 1, 15, 5) 
+    with st.expander("General Options"):
+      chat_model = st.selectbox(
+        "Chat Model",
+        options=[
+          "gpt-4-1106-preview", 
+          "gpt-4", 
+          "gpt-3.5-turbo-16k-0613", 
+          "gpt-3.5-turbo-16k", 
+          "gpt-3.5-turbo-1106",
+          "gpt-3.5-turbo"
+        ],
+        index=0
+      )
+      openai_key_input = st.text_input("OpenAI API Key", value=openai_key, type="password")
+      chat_temp = st.slider("Chat Creativity", 0.0, 2.0, 0.7, 0.1, help="This is the chat model temperature.")
+    with st.expander("Web Search Options"):
+      serper_key_input = st.text_input("Serper API Key", value=serper_key, type="password", help="Uses to perform Google search.")
+      browserless_token_input = st.text_input("Browserless.io Token", value=browserless_token, type="password", help="Service to perform web page scraping.")
+      web_scrape_method = st.selectbox(
+        "Web Scrape Method", 
+        options=["simple", "http", "browser", "screenshot"], 
+        index=1,
+        help="""
+What method to use to scrape web pages, from simple to more complex.
+
+_Note: will use Browserless.io if token provided._
+      
+1. `Simple`: Use the _answerBox_ summary.
+2. `HTTP`: Use the HTTP response.
+3. `Browser`: Use a headless browser.
+4. `Screenshot`: Use a headless browser to take a screenshot.
+"""
+      )    
+      links_n = st.slider("Search Links", 1, 10, 3, help="This is the number of search links to scrape.")
+      vector_n = st.slider("Vector Results", 1, 15, 5, help="How many vector search results to inject with RAG.") 
+      smart_top_links = st.toggle("Smart Links", value=False, help="Ask the LLM to find the top links.")
   
   # GENERATE DESCRIPTION
   if product_id and generate_btn:
     description_status = st.status("Generating description...", expanded=True)
     chat_box = st.empty()
     stream_handler = StreamHandler(chat_box)
-    print("using", chat_model)
+    os.environ["SERPER_API_KEY"] = serper_key_input
+    os.environ["BROWSERLESS_TOKEN"] = browserless_token_input
     llm = ChatOpenAI(
       model=chat_model, 
       temperature=chat_temp, 
       streaming=True, 
-      callbacks=[stream_handler]
+      callbacks=[stream_handler],
+      api_key=openai_key_input
     )
     llm_fast = OpenAI(model="text-davinci-003", temperature=0)
-    sources = run(
+    search_docs, sources = run(
       llm, 
       llm_fast, 
       description_status, 
@@ -139,9 +162,19 @@ if __name__ == "__main__":
       WebScrapeMethod(web_scrape_method),
       smart_top_links,
       links_n,
-      vector_n
+      vector_n,
+      product_url
     )
     st.write(_format_sources(sources))
+    with st.expander("Search Documents"):
+      for i, doc in enumerate(search_docs):
+        st.text_area(
+          doc.metadata["source"], 
+          doc.page_content.replace("\n", " "), 
+          height=200,
+          key=f"doc{i}"
+        )  
+    
     if web_scrape_method == "screenshot":
       with st.expander("Screenshots"):
         domain = r"https?://([A-Za-z_0-9.-]+).*"
