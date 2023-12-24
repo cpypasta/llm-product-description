@@ -148,47 +148,54 @@ _Note: will use Browserless.io if token provided._
       os.environ["SERPER_API_KEY"] = serper_key_input
     if browserless_token_input:
       os.environ["BROWSERLESS_TOKEN"] = browserless_token_input
-    llm = ChatOpenAI(
-      model=chat_model, 
-      temperature=chat_temp, 
-      streaming=True, 
-      callbacks=[stream_handler],
-      api_key=openai_key_input
-    )
-    llm_fast = OpenAI(model="text-davinci-003", temperature=0)
-    search_docs, sources = run(
-      llm, 
-      llm_fast, 
-      description_status, 
-      product_id, 
-      WebScrapeMethod(web_scrape_method),
-      smart_top_links,
-      links_n,
-      vector_n,
-      product_url
-    )
-    st.write(_format_sources(sources))
-    with st.expander("Search Documents"):
-      for i, doc in enumerate(search_docs):
-        st.text_area(
-          doc.metadata["source"], 
-          doc.page_content.replace("\n", " "), 
-          height=200,
-          key=f"doc{i}"
-        )  
-    
-    if web_scrape_method == "screenshot":
-      with st.expander("Screenshots"):
-        domain = r"https?://([A-Za-z_0-9.-]+).*"
-        source_domains = []
-        for i, s in enumerate(sources):
-          if re.match(domain, s):
-            d = re.match(domain, s).group(1)
-            d = d.replace("www.", "")
-            source_domains.append(d)
-          else:
-            source_domains.append(f"Screenshot {i}")
-            
-        tabs = st.tabs(source_domains)
-        for i, tab in enumerate(tabs):
-          tab.image(f"screenshots/image{i}.png")
+    if not openai_key_input and not os.getenv("OPENAI_API_KEY"):
+      st.error("Please provide an OpenAI API key.")
+    else:
+      llm = ChatOpenAI(
+        model=chat_model, 
+        temperature=chat_temp, 
+        streaming=True, 
+        callbacks=[stream_handler],
+        api_key=openai_key_input
+      )
+      llm_fast = OpenAI(
+        model="text-davinci-003", 
+        temperature=0,
+        api_key=openai_key_input
+      )
+      search_docs, sources = run(
+        llm, 
+        llm_fast, 
+        description_status, 
+        product_id, 
+        WebScrapeMethod(web_scrape_method),
+        smart_top_links,
+        links_n,
+        vector_n,
+        product_url
+      )
+      st.write(_format_sources(sources))
+      with st.expander("Search Documents"):
+        for i, doc in enumerate(search_docs):
+          st.text_area(
+            doc.metadata["source"], 
+            doc.page_content.replace("\n", " "), 
+            height=200,
+            key=f"doc{i}"
+          )  
+      
+      if web_scrape_method == "screenshot":
+        with st.expander("Screenshots"):
+          domain = r"https?://([A-Za-z_0-9.-]+).*"
+          source_domains = []
+          for i, s in enumerate(sources):
+            if re.match(domain, s):
+              d = re.match(domain, s).group(1)
+              d = d.replace("www.", "")
+              source_domains.append(d)
+            else:
+              source_domains.append(f"Screenshot {i}")
+              
+          tabs = st.tabs(source_domains)
+          for i, tab in enumerate(tabs):
+            tab.image(f"screenshots/image{i}.png")
