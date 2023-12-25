@@ -83,7 +83,7 @@ def run(
       vector_n
     )
     if use_web_search:
-      if os.environ["SERPER_API_KEY"]:
+      if os.getenv("SERPER_API_KEY"):
         search_docs = retriever.get_relevant_documents(query, url=url)
       else:
         st.error("Please provide a Serper API key.")
