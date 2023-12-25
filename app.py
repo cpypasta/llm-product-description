@@ -86,7 +86,7 @@ def run(
       if os.getenv("SERPER_API_KEY"):
         search_docs = retriever.get_relevant_documents(query, url=url)
       else:
-        st.error("Please provide a Serper API key.")
+        st.warning("Please provide a Serper API key. Skipping search.")
         search_docs = []
     else:
       search_docs = []
