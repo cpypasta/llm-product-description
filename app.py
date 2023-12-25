@@ -8,6 +8,7 @@ Sources of data:
 2. Product Manuals (PDFs)
 """
 import streamlit as st, re, os, sys
+import pandas as pd
 from time import time
 from dotenv import load_dotenv
 from streamlit.elements.lib.mutable_status_container import StatusContainer
@@ -21,6 +22,7 @@ from langchain.schema import Document
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores.chroma import Chroma
 from langchain.callbacks.base import BaseCallbackHandler
+import streamlit as st
 
 load_dotenv()
 
@@ -44,6 +46,8 @@ def _get_sources(docs: list[Document]) -> list[str]:
         
 def _format_sources(sources: list[str]) -> str:
   """Format sources as a string, with each source on a new line."""
+  if len(sources) == 0:
+    return "Sources: None"
   sources_str = "\n".join([f"* {s}" for s in sources])
   return f"Sources:\n{sources_str}"
 
@@ -62,7 +66,8 @@ def run(
   smart_top_links: bool,
   links_n: int,
   vector_n: int,
-  url: str = None
+  url: str = None,
+  use_web_search: bool = True
 ) -> (list[Document], str):
   start_time = time()
   query = f"what is the product {product}"
@@ -77,7 +82,14 @@ def run(
       links_n,
       vector_n
     )
-    search_docs = retriever.get_relevant_documents(query, url=url)
+    if use_web_search:
+      if os.environ["SERPER_API_KEY"]:
+        search_docs = retriever.get_relevant_documents(query, url=url)
+      else:
+        st.error("Please provide a Serper API key.")
+        search_docs = []
+    else:
+      search_docs = []
     st.write("generating description...") 
     sources = create_product_description(llm, product, search_docs) 
     end_time = time()
@@ -95,9 +107,11 @@ if __name__ == "__main__":
   browserless_token = os.getenv("BROWSERLESS_TOKEN")
   
   st.title("Product Description Generator")
-  st.info("Enter a product name or ID to generate a product description.")
+  st.info("Enter a product name or ID to generate a product description using OpenAI.")
   product_id = st.text_input("Product", value="Lemon Hint Water", key="product_id")
-  product_url = st.text_input("Reference Link _(optional)_", value="", help="Will use the link to find product information.")
+  with st.expander("Input Options", expanded=False):
+    product_url = st.text_input("Reference Link", value="", help="Will only use the link for RAG.")
+    use_web_search = st.toggle("Use Web Search", value=True, help="Use web search to find product information.")
   generate_btn = st.button("Generate")
   
   # OPTIONS
@@ -138,6 +152,19 @@ _Note: will use Browserless.io if token provided._
       links_n = st.slider("Search Links", 1, 10, 3, help="This is the number of search links to scrape.")
       vector_n = st.slider("Vector Results", 1, 15, 5, help="How many vector search results to inject with RAG.") 
       smart_top_links = st.toggle("Smart Links", value=False, help="Ask the LLM to find the top links.")
+      
+    with st.expander("Preconfigured Options"):
+      st.info("These are preconfigured options to quickly test out various configuration scenarios.")
+      preconfigured = st.selectbox(
+        "Configuration",
+        options=[
+          "None",
+          "LLM Knowledge Only",
+          "Fast Web Search",
+          "Balanced Web Search",
+          "Quality Web Search",
+          "Best Web Search"
+        ])
   
   # GENERATE DESCRIPTION
   if product_id and generate_btn:    
@@ -149,8 +176,39 @@ _Note: will use Browserless.io if token provided._
       st.error("Please provide an OpenAI API key.")
     else:
       os.environ["OPENAI_API_KEY"] = openai_key_input
+      
+      if preconfigured == "LLM Knowledge Only":
+        use_web_search = False
+      elif preconfigured == "Fast Web Search":
+        use_web_search = True
+        chat_model = "gpt-3.5-turbo"
+        web_scrape_method = "http"
+        links_n = 3
+        vector_n = 5
+      elif preconfigured == "Balanced Web Search":
+        use_web_search = True
+        chat_model = "gpt-4"
+        web_scrape_method = "browser"
+        links_n = 4
+        vector_n = 5
+      elif preconfigured == "Quality Web Search":
+        use_web_search = True
+        chat_model = "gpt-4-1106-preview"
+        web_scrape_method = "screenshot"
+        links_n = 3
+        vector_n = 1
+      elif preconfigured == "Best Web Search":
+        use_web_search = True
+        chat_model = "gpt-4-1106-preview"
+        web_scrape_method = "screenshot"
+        links_n = 4
+        vector_n = 1
+        smart_top_links = True
+              
       description_status = st.status("Generating description...", expanded=True)
-      chat_box = st.empty()
+      outerbox = st.container(border=True)
+      with outerbox:
+        chat_box = st.empty()
       stream_handler = StreamHandler(chat_box)      
       llm = ChatOpenAI(
         model=chat_model, 
@@ -171,10 +229,22 @@ _Note: will use Browserless.io if token provided._
         smart_top_links,
         links_n,
         vector_n,
-        product_url
+        product_url,
+        use_web_search
       )
-      st.write(_format_sources(sources))
-      with st.expander("Search Documents"):
+      with outerbox:
+        st.write(_format_sources(sources))
+      
+      with st.expander("Configuration"):
+        table_data = {
+          "Option": ["Chat Model", "Chat Creativity", "Use Web Search", "Web Scrape Method", "Search Links", "Vector Results", "Smart Links"],
+          "Value": [chat_model, chat_temp, use_web_search, web_scrape_method, links_n, vector_n, smart_top_links]
+        }
+
+        table_df = pd.DataFrame(table_data).set_index("Option")
+        st.table(table_df)
+      
+      with st.expander("Search Documents _(chunks)_"):
         for i, doc in enumerate(search_docs):
           st.text_area(
             doc.metadata["source"], 
@@ -197,4 +267,8 @@ _Note: will use Browserless.io if token provided._
               
           tabs = st.tabs(source_domains)
           for i, tab in enumerate(tabs):
-            tab.image(f"screenshots/image{i}.png")
+            image_path = f"screenshots/image{i}.png"
+            if os.path.exists(image_path):
+              tab.image(image_path)
+            else:
+              tab.write("Unable to load image.")

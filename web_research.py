@@ -1,4 +1,4 @@
-import json, base64, openai, asyncio, os, pysqlite3, sys
+import json, base64, openai, asyncio, os, pysqlite3, sys, shutil
 from enum import Enum
 from timeit import default_timer
 from typing import Callable, Any
@@ -172,6 +172,7 @@ class WebResearchRetriever(BaseRetriever):
 
   async def _take_screenshots(self, urls: str) -> list[str]:
     token = os.getenv('BROWSERLESS_TOKEN')
+    shutil.rmtree("screenshots")
     async with async_playwright() as p:
       if token:
         print("using browserless.io")
