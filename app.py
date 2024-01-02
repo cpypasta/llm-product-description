@@ -108,7 +108,7 @@ if __name__ == "__main__":
   
   st.title("Product Description Generator")
   st.info("Enter a product name or ID to generate a product description using OpenAI.")
-  product_id = st.text_input("Product", value="Lemon Hint Water", key="product_id")
+  product_id = st.text_input("Product", value="Apple Watch Ultra", key="product_id")
   with st.expander("Input Options", expanded=False):
     product_url = st.text_input("Reference Link", value="", help="Will only use the link for RAG.")
     use_web_search = st.toggle("Use Web Search", value=True, help="Use web search to find product information.")
