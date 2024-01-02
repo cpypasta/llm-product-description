@@ -173,7 +173,8 @@ class WebResearchRetriever(BaseRetriever):
 
   async def _take_screenshots(self, urls: str) -> list[str]:
     token = os.getenv('BROWSERLESS_TOKEN')
-    shutil.rmtree("screenshots")
+    if os.path.exists("screenshots"):
+      shutil.rmtree("screenshots")
     async with async_playwright() as p:
       if token:
         print("using browserless.io")
