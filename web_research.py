@@ -167,6 +167,7 @@ class WebResearchRetriever(BaseRetriever):
     page = await browser.new_page()
     await page.goto(url, wait_until="load")
     filename = f"screenshots/image{i}.png"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     await page.screenshot(path=filename, full_page=True)
     return filename
 
