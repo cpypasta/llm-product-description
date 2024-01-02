@@ -165,7 +165,10 @@ class WebResearchRetriever(BaseRetriever):
 
   async def _take_screenshot(self, browser: Browser, url: str, i: int) -> str:
     page = await browser.new_page()
-    await page.goto(url, wait_until="load")
+    try:
+      await page.goto(url, wait_until="load")
+    except:
+      return None
     filename = f"screenshots/image{i}.png"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     await page.screenshot(path=filename, full_page=True)
@@ -184,6 +187,7 @@ class WebResearchRetriever(BaseRetriever):
         browser = await p.chromium.launch()
       calls = [self._take_screenshot(browser, url, i) for i, url in enumerate(urls)]
       filenames = await asyncio.gather(*calls)
+      filenames = [f for f in filenames if f is not None]
       await browser.close()
       return filenames
       
